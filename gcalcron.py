@@ -190,7 +190,7 @@ class GCalCron(object):
     """
 
     settings = None
-    settings_file = os.getenv('HOME') + '/' + '.gcalcron2'
+    settings_file = os.path.join(os.getcwd(), 'gcalcron_conf.json')
 
     def __init__(self, g_cal_adapter=None):
         self.gCalAdapter = g_cal_adapter
