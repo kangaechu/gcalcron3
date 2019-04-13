@@ -11,8 +11,19 @@
 Usage:
   $ python gcalcron2.py
 """
+from __future__ import print_function
+from __future__ import unicode_literals
+from __future__ import division
+from __future__ import absolute_import
 
 # Google API
+from builtins import open
+from builtins import int
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import input
+from builtins import object
 import argparse
 import httplib2
 import os
@@ -45,7 +56,7 @@ parser.add_argument('--reset', default=False,
 
 
 
-class GCalAdapter:
+class GCalAdapter(object):
   """
   Adapter class which communicates with the Google Calendar API
   @since 2011-06-19
@@ -172,7 +183,7 @@ class GCalAdapter:
     return self.queryApi(queries)
 
 
-class GCalCron:
+class GCalCron(object):
   """
   Schedule your cron commands in a dedicated Google Calendar,
   this class will convert them into UNIX "at" job list and keep
@@ -196,7 +207,7 @@ class GCalCron:
       with open(self.settings_file) as f:
         self.settings = json.load(f)
     except IOError:
-      calendarId = raw_input('Calendar id (in the form of XXXXX....XXXX@group.calendar.google.com or for the main one just your Google email): ')
+      calendarId = input('Calendar id (in the form of XXXXX....XXXX@group.calendar.google.com or for the main one just your Google email): ')
       self.init_settings(calendarId)
       self.save_settings()
 
@@ -219,12 +230,12 @@ class GCalCron:
   def clean_settings(self):
     """Cleans the settings from saved jobs in the past"""
 
-    for event_uid, job in self.settings['jobs'].items():
+    for event_uid, job in list(self.settings['jobs'].items()):
       if datetime.datetime.strptime(job['date'], '%Y-%m-%d') <= datetime.datetime.now() - datetime.timedelta(days=1):
         del self.settings['jobs'][event_uid]
 
   def reset_settings(self):
-    for event, job in self.settings['jobs'].items():
+    for event, job in list(self.settings['jobs'].items()):
       command = [u'at', u'-d'] + job['ids']
       logger.debug(command)
       p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -377,7 +388,7 @@ def parse_events(events):
     event_description = ''
     if 'description' in event:
       event_description = event['description']
-    logger.debug(event['id'] + '-' + event['status'] + '-' + event['updated'] + ': ' + unicode(start_time) + ' -> ' + unicode(end_time) + ' (' + event['start']['dateTime'] + ' -> ' + event['end']['dateTime'] + ') ' + '=>' + event_description)
+    logger.debug(event['id'] + '-' + event['status'] + '-' + event['updated'] + ': ' + str(start_time) + ' -> ' + str(end_time) + ' (' + event['start']['dateTime'] + ' -> ' + event['end']['dateTime'] + ') ' + '=>' + event_description)
     if event['status'] == 'cancelled':
       logger.info("cancelled " + event['id'])
       commandsList.append({
