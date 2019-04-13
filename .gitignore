@@ -131,3 +131,4 @@ dmypy.json
 client_secrets.json
 credentials.dat
 gcalcron.log
+gcalcron_conf.json

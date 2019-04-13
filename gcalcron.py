@@ -1,5 +1,4 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 #
 #    gcalcron
 
@@ -120,7 +119,7 @@ class GCalAdapter(object):
             'maxResults': 1000,
             'orderBy': 'updated',
             'singleEvents': True,
-            'fields': 'items(description,end,id,start,status,summary,updated)',
+            'fields': 'items(description,end,id,location,start,status,summary,updated)',
             'timeMin': start_min.isoformat(),
             'timeMax': start_max.isoformat(),
         }
@@ -257,33 +256,32 @@ class GCalCron(object):
 
     def schedule_new_jobs(self, events):
         for event in events:
-            if 'commands' not in event:
+            if 'command' not in event:
                 continue
 
-            for command in event['commands']:
-                if command['exec_time'] <= datetime.datetime.now():
-                    continue
+            if event['command']['exec_time'] <= datetime.datetime.now():
+                continue
 
-                cmd = ['at', datetime_to_at(command['exec_time'])]
-                logger.debug(cmd)
+            cmd = ['at', datetime_to_at(event['command']['exec_time'])]
+            logger.debug(cmd)
 
-                p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                (stdout, stderr) = p.communicate(command['command'])
+            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (stdout, stderr) = p.communicate(event['command']['command'].encode())
 
-                logger.debug(stdout)
-                logger.debug(stderr)
+            logger.debug(stdout)
+            logger.debug(stderr)
 
-                job_id_match = re.compile('job (\d+) at').search(stderr)
+            job_id_match = re.compile('job (\d+) at').search(str(stderr))
 
-                if job_id_match:
-                    job_id = job_id_match.group(1)
-                    logger.debug('identified job_id: ' + job_id)
+            if job_id_match:
+                job_id = job_id_match.group(1)
+                logger.debug('identified job_id: ' + job_id)
 
                 if event['uid'] in self.settings['jobs']:
                     self.settings['jobs'][event['uid']]['ids'].append(job_id)
                 else:
                     self.settings['jobs'][event['uid']] = {
-                        'date': command['exec_time'].strftime('%Y-%m-%d'),
+                        'date': event['command']['exec_time'].strftime('%Y-%m-%d'),
                         'ids': [job_id, ]
                     }
 
@@ -304,13 +302,13 @@ class GCalCron(object):
 
         sync_start = datetime.datetime.now(gettz())
         events = self.gCalAdapter.get_events(sync_start, last_sync, num_days)
-        commands_list = parse_events(events)
+        command_list = parse_events(events)
 
         # first unschedule all modified/deleted events
-        self.unschedule_old_jobs(commands_list)
+        self.unschedule_old_jobs(command_list)
 
         # then reschedule all modified/new events
-        self.schedule_new_jobs(commands_list)
+        self.schedule_new_jobs(command_list)
 
         # clean old jobs from the settings
         self.clean_settings()
@@ -319,16 +317,16 @@ class GCalCron(object):
         self.save_settings()
 
 
-def parse_commands(event_description, start_time, end_time):
+def parse_command(event_description, start_time, end_time, event_summary, event_location):
     """
     Parses the description of a Google calendar event and returns a list of commands to execute
 
-    >>> parse_commands("echo 'Wake up!'\\n+10: echo 'Wake up, you are 10 minutes late!'", 
+    >>> parse_command("echo 'Wake up!'\\n+10: echo 'Wake up, you are 10 minutes late!'",
     datetime.datetime(3011, 6, 19, 8, 30), datetime.datetime(3011, 6, 19, 9, 0))
     [{'exec_time': datetime.datetime(3011, 6, 19, 8, 30), 'command': "echo 'Wake up!'"},
     {'exec_time': datetime.datetime(3011, 6, 19, 8, 40), 'command': "echo 'Wake up, you are 10 minutes late!'"}]
 
-    >>> parse_commands("Turn on lights\\nend -10: Dim lights\\nend: Turn off lights",
+    >>> parse_command("Turn on lights\\nend -10: Dim lights\\nend: Turn off lights",
     datetime.datetime(3011, 6, 19, 18, 30), datetime.datetime(3011, 6, 19, 23, 0))
     [{'exec_time': datetime.datetime(3011, 6, 19, 18, 30), 'command': 'Turn on lights'},
     {'exec_time': datetime.datetime(3011, 6, 19, 22, 50), 'command': 'Dim lights'},
@@ -338,33 +336,17 @@ def parse_commands(event_description, start_time, end_time):
     @author Fabrice Bernhard
     @since 2011-06-13
     """
-
-    commands = []
-    for command in event_description.split("\n"):
-        exec_time = start_time
-        # Supported syntax for offset prefixes:
-        #   '[+-]10: ', 'end:', 'end[+-]10:', 'end [+-]10:'
-        offset_match = re.compile("^(end)? ?([+,-]\d+)?: (.*)").search(command)
-        if offset_match:
-            if offset_match.group(1):
-                exec_time = end_time
-            if offset_match.group(2):
-                exec_time += datetime.timedelta(minutes=int(offset_match.group(2)))
-            command = offset_match.group(3)
-
-        command = command.strip()
-        if command:
-            if exec_time >= datetime.datetime.now():
-                commands.append({
-                    'command': command,
-                    'exec_time': exec_time
-                })
-            else:
-                logger.debug('Ignoring command that was scheduled for the past')
-        else:
-            logger.debug('Blank command')
-
-    return commands
+    command = os.path.abspath(os.path.join(os.path.dirname(__file__), 'gcalcron.sh'))
+    exec_time = dateutil.parser.parse(start_time).replace(tzinfo=None)
+    if exec_time >= datetime.datetime.now():
+        command = {
+            'command': command + ' "' + '" "'.join(
+                [ start_time, end_time, event_summary, event_location, event_description]) + '"',
+            'exec_time': exec_time
+        }
+        return command
+    else:
+        logger.debug('Ignoring command that was scheduled for the past')
 
 
 def parse_events(events):
@@ -388,33 +370,39 @@ def parse_events(events):
     @author Fabrice Bernhard
     @since 2013-12-22
     """
-    commands_list = []
+    command_list = []
     for event in events:
-        start_time = dateutil.parser.parse(event['start']['dateTime']).replace(tzinfo=None)
-        end_time = dateutil.parser.parse(event['end']['dateTime']).replace(tzinfo=None)
+        start_time = event['start']['dateTime']
+        end_time = event['end']['dateTime']
         event_description = ''
         if 'description' in event:
             event_description = event['description']
+        event_location = ''
+        if 'location' in event:
+            event_location = event['location']
+        event_summary = ''
+        if 'summary' in event:
+            event_summary = event['summary']
         logger.debug(
             event['id'] + '-' + event['status'] + '-' + event['updated'] + ': ' + str(start_time) + ' -> ' + str(
                 end_time) + ' (' + event['start']['dateTime'] + ' -> ' + event['end'][
                 'dateTime'] + ') ' + '=>' + event_description)
         if event['status'] == 'cancelled':
             logger.info("cancelled " + event['id'])
-            commands_list.append({
+            command_list.append({
                 'uid': event['id']
             })
         elif event_description:
-            commands = parse_commands(event_description, start_time, end_time)
-            if commands:
-                commands_list.append({
+            command = parse_command(event_description, start_time, end_time, event_summary, event_location)
+            if command:
+                command_list.append({
                     'uid': event['id'],
-                    'commands': commands
+                    'command': command
                 })
 
-    logger.debug(commands_list)
+    logger.debug(command_list)
 
-    return commands_list
+    return command_list
 
 
 def datetime_to_at(dt):
