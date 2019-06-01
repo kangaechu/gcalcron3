@@ -189,7 +189,7 @@ class GCalCron(object):
     """
 
     settings = None
-    settings_file = os.path.join(os.getcwd(), 'gcalcron_conf.json')
+    settings_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gcalcron_conf.json')
 
     def __init__(self, g_cal_adapter=None):
         self.gCalAdapter = g_cal_adapter
@@ -341,7 +341,7 @@ def parse_command(event_description, start_time, end_time, event_summary, event_
     if exec_time >= datetime.datetime.now():
         command = {
             'command': command + ' "' + '" "'.join(
-                [ start_time, end_time, event_summary, event_location, event_description]) + '"',
+                [start_time, end_time, event_summary, event_location, event_description]) + '"',
             'exec_time': exec_time
         }
         return command
