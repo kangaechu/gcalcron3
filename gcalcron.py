@@ -392,7 +392,7 @@ def parse_events(events):
             command_list.append({
                 'uid': event['id']
             })
-        elif event_description:
+        else:
             command = parse_command(event_description, start_time, end_time, event_summary, event_location)
             if command:
                 command_list.append({
